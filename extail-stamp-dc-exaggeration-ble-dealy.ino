@@ -49,6 +49,9 @@ double delayedSensVal;
 String sampleText[] = {"GoodMorning", "Hello", "GoodBye", "GoodNight"};
 uint8_t FSM = 0;    //Store the number of key presses.  存储按键按下次数
 
+//遅延量をボタンで調整する
+float delaySecBtnCnt = 0;
+
 // *--- DC motor ---
 #define IN1 32 // モーター1正転信号端子
 #define IN2 33 // モーター1逆転信号端子
@@ -142,11 +145,31 @@ int ledTask = 0;
 // task1：センサ値に応じてステッパーを回す
 void task1(void * pvParameters) { //Define the tasks to be executed in thread 1.  定义线程1内要执行的任务
   while (1) { //Keep the thread running.  使线程一直运行
-    //stepRoll();
-    stepAccX();
-    //stepAccZ();
+
+    switch (FSM)
+    {
+      case 0:
+        stepRoll();
+        break;
+
+      case 1:
+        stepAccX();
+        break;
+
+      case 2:
+        stepAccZ();
+        break;
+
+      default:
+        //適度に待つ
+        delay(100);
+        continue; // スイッチ内で待ち時間がない場合は、次のループに進むようにcontinueを追加
+    }
+
     vTaskDelay(5); // ステッパーがセンサ値に応じて回転する1セット分を待つインターバル
     // 0でもうごきはするが挙動が不安定になりやすいので5か10くらいにしておく。50だと流石にカクつく
+
+
   }
 }
 
@@ -198,12 +221,13 @@ void task3(void * pvParameters) {
     btnState = digitalRead(Button);
     if (btnState == 0 && btnState_old == 1) {
       Serial.printf("Button Pressed", btnState);
-      Serial.println("");
+
+      //Serial.println("");
 
 
-      if (deviceConnected) { //接続されていたら
+      /*if (deviceConnected) { //接続されていたら
         // 送信する値（仮の値）
-        /*uint8_t*/String valueToSend = sampleText[FSM];
+        String valueToSend = delaySecBtnCnt;
 
         // BLE通知を行う
         pNotifyCharacteristic->setValue(valueToSend);
@@ -211,13 +235,19 @@ void task3(void * pvParameters) {
 
         Serial.print("send");
         Serial.println(valueToSend);
-      }
+        }
+
+        delaySecBtnCnt += 0.1;
+        if (delaySecBtnCnt > 1.5) {
+        delaySecBtnCnt = 0;
+        }*/
 
       FSM++;
-      if (FSM >= 4) {
+
+      if (FSM >= 3) {
         FSM = 0;
       }
-
+      Serial.println(FSM);
 
 
 
@@ -246,23 +276,23 @@ class ServerCallbacks : public NimBLEServerCallbacks
 
     /* //SecurytyRequestをペリフェラルから送るとき
       void onConnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) {
-       Serial.print("Client address: ");
-       Serial.println(NimBLEAddress(desc->peer_ota_addr).toString().c_str());
+      Serial.print("Client address: ");
+      Serial.println(NimBLEAddress(desc->peer_ota_addr).toString().c_str());
 
-       NimBLEDevice::startSecurity(desc->conn_handle);
+      NimBLEDevice::startSecurity(desc->conn_handle);
 
-       pServer->updateConnParams(desc->conn_handle, 24, 48, 0, 60);
-       deviceConnected = true;
+      pServer->updateConnParams(desc->conn_handle, 24, 48, 0, 60);
+      deviceConnected = true;
       };*/
 
     //切断時
-    void onDisconnect(NimBLEServer *pServer)
+    void onDisconnect(NimBLEServer * pServer)
     {
       Serial.println("Client disconnected - start advertising");
       deviceConnected = false;
       NimBLEDevice::startAdvertising();
     };
-    void onMTUChange(uint16_t MTU, ble_gap_conn_desc *desc)
+    void onMTUChange(uint16_t MTU, ble_gap_conn_desc * desc)
     {
       Serial.printf("MTU updated: %u for connection ID: %u\n", MTU, desc->conn_handle);
     };
@@ -282,7 +312,7 @@ class ServerCallbacks : public NimBLEServerCallbacks
       return true;
     };
     //認証完了時の処理
-    void onAuthenticationComplete(ble_gap_conn_desc *desc)
+    void onAuthenticationComplete(ble_gap_conn_desc * desc)
     { /** 暗号化が成功したかどうかを確認し、成功しなかった場合はクライアントを切断する */
       if (!desc->sec_state.encrypted)
       {
@@ -334,7 +364,7 @@ class CharacteristicCallbacks : public BLECharacteristicCallbacks
 };
 
 
-void detectReceivedDataType(boolean& noMoreEvent, std::string rxValue, String index_str) {
+void detectReceivedDataType(boolean & noMoreEvent, std::string rxValue, String index_str) {
   //noMoreEventは参照渡しにすることで、関数内での変数値の変更が 呼び出し元の変数に反映されるようにする必要がある。
   //そうしないと呼び出し元の onWrite 関数におけるnoMoreEventの値は更新されないので、無限ループに陥ってしまう
   int from = 0;
@@ -519,10 +549,18 @@ void loop() {
 
   loopBLE();
 
-  //bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
-  bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
+  if (FSM == 0) {
+    bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
+    sensVal = printEvent(&orientationData);
 
-  sensVal = printEvent(&linearAccelData);
+  } else {
+    bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
+    sensVal = printEvent(&linearAccelData);
+
+  }
+
+
+
 
   // バッファにセンサの値を保存
   buffer[bufferIndex] = sensVal;
@@ -532,8 +570,8 @@ void loop() {
 
   // delaySec秒遅れて値を参照する関数を呼び出す
   delayedSensVal = getDelayedValue(delaySec);
- /* String str = "now:" + String(sensVal) + "," + "delayed:" + String(delayedSensVal);
-  Serial.println(str);*/
+  /* String str = "now:" + String(sensVal) + "," + "delayed:" + String(delayedSensVal);
+    Serial.println(str);*/
 
   // String str = "x:" + String(accX) + " target:" + String(rotationQuantity) + " rotationQuantity_total:" + String(rotationQuantity_total);
   // Serial.println(str);
@@ -555,10 +593,6 @@ double getDelayedValue(float seconds) {
   return buffer[delayedIndex];
 }
 
-
-void buttonState() {
-
-}
 
 
 // *--- Stepper BaCsics ---
@@ -899,7 +933,7 @@ void stepAccZ()
     if (rotationQuantity != 0)
     {
       // accZには回ってる間にかなりの確率で次の値が代入される。printをaccZですると回転した時の値とずれるので、accZ_absoluteでする。
-      // printSteps_acc(dir, accZ_absolute);
+      printSteps_acc(dir, accZ_absolute);
     }
   }
   else
@@ -1018,5 +1052,26 @@ double printEvent(sensors_event_t *event)
     Serial.println(valueToSend);
   }
 
-  return x;
+  //return z;
+
+  switch (FSM)
+  {
+    case 0:
+      Serial.print("y");
+      return y;
+
+    case 1:
+      Serial.print("x");
+      return x;
+
+    case 2:
+      Serial.print("z");
+      return z;
+
+    default:
+      // 適度に待つ
+      delay(100);
+  }
+
+
 }
