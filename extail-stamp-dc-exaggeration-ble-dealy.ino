@@ -34,7 +34,7 @@ Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28, &Wire);
 sensors_event_t orientationData, angVelocityData, linearAccelData, magnetometerData, accelerometerData, gravityData;
 
 //遅延系
-const float delaySec = 0.5; // 遅延秒数（例: 0.5秒）
+const float delaySec = 0.2; // 遅延秒数（検証対象：0, 0.1,0.2,0.3,0.5,0.75,1.0,1.25,1.5
 const int sampleRate = 100; // サンプリングレート（Hz）BNO055_SAMPLERATE_DELAY_MSと（実質）揃える．型の便宜上変数は分けてある．
 
 const int bufferSize = delaySec * sampleRate; // バッファサイズ（delaySec秒分）
@@ -88,8 +88,8 @@ double accZ_th_min = 1.5; // 閾値
 double accZ_th_max = 8;
 
 
-float roll_logBase = 1.0617;
-float accX_logBase = 1.0105;
+float roll_logBase = 1.0617;//20-50
+float accX_logBase = 1.0105;//8-200
 float accZ_logBase = 1.0105;
 
 // 姿勢角
@@ -150,9 +150,9 @@ int ledTask = 0;
 // task1：センサ値に応じてステッパーを回す
 void task1(void * pvParameters) { //Define the tasks to be executed in thread 1.  定义线程1内要执行的任务
   while (1) { //Keep the thread running.  使线程一直运行
-
-    switch (FSM)
-    {
+    stepAccZ();
+    /*switch (FSM)
+      {
       case 0:
         stepRoll();
         break;
@@ -169,7 +169,7 @@ void task1(void * pvParameters) { //Define the tasks to be executed in thread 1.
         //適度に待つ
         delay(100);
         continue; // スイッチ内で待ち時間がない場合は、次のループに進むようにcontinueを追加
-    }
+      }*/
 
     vTaskDelay(5); // ステッパーがセンサ値に応じて回転する1セット分を待つインターバル
     // 0でもうごきはするが挙動が不安定になりやすいので5か10くらいにしておく。50だと流石にカクつく
@@ -341,7 +341,7 @@ class CharacteristicCallbacks : public BLECharacteristicCallbacks
         String rxValue_string = rxValue.c_str();//std::stringはそのままではprintf()で表示できません。表示するには.c_str()で変換します。
         Serial.print("received: ");
         Serial.println(rxValue_string);
-
+        ledTask = 4;
         //pNotifyCharacteristic->setValue(rxValue_string);//これはAtom側でreceive(iOSからAtomへの書き込み)成功したらその値をiOSに送り直すやつ、つまり確認用途であり、必須では無い。
         //pNotifyCharacteristic->notify();
 
@@ -554,15 +554,20 @@ void loop() {
 
   loopBLE();
 
-  if (FSM == 0) {
-    bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
-    sensVal = printEvent(&orientationData);
+  /*
+    if (FSM == 0) {
+      bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
+      sensVal = printEvent(&orientationData);
 
-  } else {
-    bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
-    sensVal = printEvent(&linearAccelData);
+    } else {
+      bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
+      sensVal = printEvent(&linearAccelData);
 
-  }
+    }*/
+
+  bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
+  sensVal = printEvent(&linearAccelData);
+
 
 
 
@@ -1061,30 +1066,30 @@ double printEvent(sensors_event_t *event)
     pNotifyCharacteristic->setValue(valueToSend);
     pNotifyCharacteristic->notify();
 
-    Serial.print("send");
-    Serial.println(valueToSend);
+    //Serial.print("send");
+    //Serial.println(valueToSend);
   }
 
-  //return z;
+  return z;
+  /*
+    switch (FSM)
+    {
+      case 0:
+        Serial.print("y");
+        return y;
 
-  switch (FSM)
-  {
-    case 0:
-      Serial.print("y");
-      return y;
+      case 1:
+        Serial.print("x");
+        return x;
 
-    case 1:
-      Serial.print("x");
-      return x;
+      case 2:
+        Serial.print("z");
+        return z;
 
-    case 2:
-      Serial.print("z");
-      return z;
-
-    default:
-      // 適度に待つ
-      delay(100);
-  }
+      default:
+        // 適度に待つ
+        delay(100);
+    }*/
 
 
 }
