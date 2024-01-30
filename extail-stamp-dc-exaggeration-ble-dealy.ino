@@ -48,6 +48,7 @@ double delayedSensVal;
 //BLE 通信test用変数
 String sampleText[] = {"GoodMorning", "Hello", "GoodBye", "GoodNight"};
 uint8_t FSM = 0;    //Store the number of key presses.  存储按键按下次数
+int SensingTarget = 0;
 
 //遅延量をボタンで調整する
 float delaySecBtnCnt = 0;
@@ -127,7 +128,7 @@ bool oldDeviceConnected = false;
 
 // ### 心拍系
 //BLE通信で送られてきた値をintに直して保管（初期値は標準的な値）
-int volume = 0;
+int receivedValue = 0;
 bool flag_volume = false;
 
 
@@ -150,9 +151,8 @@ int ledTask = 0;
 // task1：センサ値に応じてステッパーを回す
 void task1(void * pvParameters) { //Define the tasks to be executed in thread 1.  定义线程1内要执行的任务
   while (1) { //Keep the thread running.  使线程一直运行
-    stepAccZ();
-    /*switch (FSM)
-      {
+    switch (SensingTarget)
+    {
       case 0:
         stepRoll();
         break;
@@ -168,13 +168,12 @@ void task1(void * pvParameters) { //Define the tasks to be executed in thread 1.
       default:
         //適度に待つ
         delay(100);
-        continue; // スイッチ内で待ち時間がない場合は、次のループに進むようにcontinueを追加
-      }*/
+
+    }
+
 
     vTaskDelay(5); // ステッパーがセンサ値に応じて回転する1セット分を待つインターバル
     // 0でもうごきはするが挙動が不安定になりやすいので5か10くらいにしておく。50だと流石にカクつく
-
-
   }
 }
 
@@ -369,31 +368,35 @@ class CharacteristicCallbacks : public BLECharacteristicCallbacks
 };
 
 
-void detectReceivedDataType(boolean & noMoreEvent, std::string rxValue, String index_str) {
+void detectReceivedDataType(boolean& noMoreEvent, std::string rxValue, String index_str) {
   //noMoreEventは参照渡しにすることで、関数内での変数値の変更が 呼び出し元の変数に反映されるようにする必要がある。
   //そうしないと呼び出し元の onWrite 関数におけるnoMoreEventの値は更新されないので、無限ループに陥ってしまう
   int from = 0;
   int index = rxValue.find(index_str.c_str(), from);
-  Serial.println("detect" + index);
+  Serial.print("detect... "/* + index*/);
   // もし見つからなければ
   if (index < 0)
   {
     // 処理が終了したと判断してフラグをセット
     noMoreEvent = true;
-    volume = 0;
+    receivedValue = 0;
     flag_volume = false;
-    Serial.println("end");
+    Serial.println("---end---");
   }
   // もし見つかったら
   else
   {
     // 次に処理する読み取り開始位置を更新
     from = index + 1;
-    // '*'以降の数字文字列を取り出す
+    // index_str 以降の数字文字列を取り出す
     const char* valuePtr = rxValue.c_str() + index + 1;
-    volume = atoi(valuePtr);
+    receivedValue = atoi(valuePtr);
     flag_volume = true;
-    Serial.println("volume: " + String(volume));//ここで数字拾うだけだと loopの中で直近の1以上の値を持ち続けてしまう？
+    Serial.println("receivedValue: " + String(receivedValue) + ", index: " + index_str); //ここで数字拾うだけだと loopの中で直近の1以上の値を持ち続けてしまう？
+
+    if (index_str == ">") {
+      SensingTarget = receivedValue;
+    }
   }
 
 }
@@ -536,7 +539,7 @@ void setup() {
 
   delay(1000);
   bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
-  printEvent(&orientationData);
+  printEvent(&orientationData, receivedValue);
   Serial.print("roll: ");
   Serial.println(roll);
   roll_old = roundf(roll);
@@ -554,22 +557,11 @@ void loop() {
 
   loopBLE();
 
-  /*
-    if (FSM == 0) {
-      bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
-      sensVal = printEvent(&orientationData);
-
-    } else {
-      bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
-      sensVal = printEvent(&linearAccelData);
-
-    }*/
+  bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
+  sensVal = printEvent(&orientationData, receivedValue);
 
   bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
-  sensVal = printEvent(&linearAccelData);
-
-
-
+  sensVal =  printEvent(&linearAccelData, receivedValue);
 
 
   // バッファにセンサの値を保存
@@ -580,8 +572,8 @@ void loop() {
 
   // delaySec秒遅れて値を参照する関数を呼び出す
   delayedSensVal = getDelayedValue(delaySec);
-  /* String str = "now:" + String(sensVal) + "," + "delayed:" + String(delayedSensVal);
-    Serial.println(str);*/
+  // String str = "now:" + String(sensVal) + "," + "delayed:" + String(delayedSensVal);
+  // Serial.println(str);
 
   // String str = "x:" + String(accX) + " target:" + String(rotationQuantity) + " rotationQuantity_total:" + String(rotationQuantity_total);
   // Serial.println(str);
@@ -687,19 +679,24 @@ void printSteps(int dir, int roundf_, int old, int diff)
   }
 }
 
-void printSteps_acc(int dir, double accX_absolute)
+void printSteps_acc(int dir, double accX_absolute, int component)
 {
   if (rotationQuantity != 0)
   {
     String str;
-    if (dir == 1)
-    {
-      str = "accX: " + String(accX_absolute) + " target: " + String(rotationQuantity) + " rQuantity_total:" + String(rotationQuantity_total) /*+ " rSpeed:" + String(rotationSpeed)*/;
+
+    if (component == 0) {
+      str += "accX:";
+    } else {
+      str += "accZ:";
     }
-    else
+    if (dir == -1)
     {
-      str = "accX:-" + String(accX_absolute) + " target:- " + String(rotationQuantity) + " rQuantity_total:" + String(rotationQuantity_total) /*+ " rSpeed:" + String(rotationSpeed)*/;
+      str += "-";
     }
+
+    str += String(accX_absolute) + " target: " + String(rotationQuantity) + " rQuantity_total:" + String(rotationQuantity_total) /*+ " rSpeed:" + String(rotationSpeed)*/;
+
     Serial.print(str);
     Serial.print(" ");
     Serial.println(back);
@@ -833,7 +830,7 @@ void rotateWithSensorValue(int dir, int &rotationQuantity, int rotationSpeed)
 void stepRoll()
 {
   // 最新のroll値を確認
-  roll_roundf = roundf(roll); // rollの四捨五入値
+  roll_roundf = roundf( delayedSensVal/*roll*/); // rollの四捨五入値
   // どのくらい動かせば良いかを知るために、1つ前の角度との差を計算
   // targetAngle = calcDiff(roll_roundf, roll_old); // ここでroll_oldからrollに動く方向がが正負のいずれかを見る
   calculateDirAndAbsDiff(roll_roundf, roll_old, dir, roll_diff);
@@ -899,7 +896,7 @@ void stepAccX()
     if (rotationQuantity != 0)
     {
       // accXには回ってる間にかなりの確率で次の値が代入される。printをaccXですると回転した時の値とずれるので、accX_absoluteでする。
-      printSteps_acc(dir, accX_absolute);
+      // printSteps_acc(dir, accX_absolute, 0);
     }
   }
   else
@@ -907,8 +904,6 @@ void stepAccX()
     rotationQuantity = 0;
   }
 }
-
-
 
 
 
@@ -951,7 +946,7 @@ void stepAccZ()
     if (rotationQuantity != 0)
     {
       // accZには回ってる間にかなりの確率で次の値が代入される。printをaccZですると回転した時の値とずれるので、accZ_absoluteでする。
-      printSteps_acc(dir, accZ_absolute);
+      printSteps_acc(dir, accZ_absolute, 1);
     }
   }
   else
@@ -992,7 +987,7 @@ void calculateDirAndAbsDiff(int roll_roundf, int roll_old, int &dir, int &roll_d
 }
 
 // センサ値の取得
-double printEvent(sensors_event_t *event)
+double printEvent(sensors_event_t *event, int receivedValue)
 {
   double x = -1000000, y = -1000000, z = -1000000; // dumb values, easy to spot problem
   if (event->type == SENSOR_TYPE_ACCELEROMETER)
@@ -1001,7 +996,7 @@ double printEvent(sensors_event_t *event)
     x = event->acceleration.x;
     y = event->acceleration.y;
     z = event->acceleration.z;
-    accX = x;
+    //accX = x;
   }
   else if (event->type == SENSOR_TYPE_ORIENTATION)
   {
@@ -1010,6 +1005,7 @@ double printEvent(sensors_event_t *event)
     y = event->orientation.y;
     z = event->orientation.z;
     roll = y;
+    // return y;
   }
   else if (event->type == SENSOR_TYPE_MAGNETIC_FIELD)
   {
@@ -1039,6 +1035,8 @@ double printEvent(sensors_event_t *event)
     y = event->acceleration.y;
     z = event->acceleration.z;
     accX = x;
+    accZ = z;
+    // return ;
   }
   else if (event->type == SENSOR_TYPE_GRAVITY)
   {
@@ -1057,7 +1055,6 @@ double printEvent(sensors_event_t *event)
   // Serial.println(str);
   //String str = "accX:" + String(accX) + "," + "roll:" + String(roll);
 
-  //Serial.println(x);
   if (deviceConnected) { //接続されていたら
     // 送信する値（仮の値）
     /*uint8_t*/String valueToSend = String(str);
@@ -1070,26 +1067,27 @@ double printEvent(sensors_event_t *event)
     //Serial.println(valueToSend);
   }
 
-  return z;
-  /*
-    switch (FSM)
-    {
-      case 0:
-        Serial.print("y");
-        return y;
 
-      case 1:
-        Serial.print("x");
-        return x;
+  switch (SensingTarget)
+  {
+    case 0:
+      //Serial.print("y");
+      return y;
+      break;
 
-      case 2:
-        Serial.print("z");
-        return z;
+    case 1:
+      //Serial.print("x");
+      return x;
+      break;
 
-      default:
-        // 適度に待つ
-        delay(100);
-    }*/
+    case 2:
+      //Serial.print("z");
+      return z;
+      break;
 
+    default:
+      //適度に待つ
+      delay(100);
+  }
 
 }
