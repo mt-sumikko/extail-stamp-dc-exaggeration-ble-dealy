@@ -1,4 +1,6 @@
-/*MultiTaskにextail-stamp-exaggeration-dcを移植してstamp仕様のMultiTaskで動かしたソース
+/*
+   logかつdelayで動かすソース
+   MultiTaskにextail-stamp-exaggeration-dcを移植してstamp仕様のMultiTaskで動かしたソース
   BLE通信モニタリング機能（stampが送信側）を搭載　LEDのソースはextail-device-stamppico-bleを参照
 *******************************************************************************
   Copyright (c) 2021 by M5Stack
@@ -557,11 +559,17 @@ void loop() {
 
   loopBLE();
 
-  bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
-  sensVal = printEvent(&orientationData, receivedValue);
 
-  bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
-  sensVal =  printEvent(&linearAccelData, receivedValue);
+  if (SensingTarget == 0) {
+    
+    bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
+    sensVal = printEvent(&orientationData, receivedValue);
+
+  } else {
+
+    bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
+    sensVal =  printEvent(&linearAccelData, receivedValue);
+  }
 
 
   // バッファにセンサの値を保存
@@ -697,9 +705,8 @@ void printSteps_acc(int dir, double accX_absolute, int component)
 
     str += String(accX_absolute) + " target: " + String(rotationQuantity) + " rQuantity_total:" + String(rotationQuantity_total) /*+ " rSpeed:" + String(rotationSpeed)*/;
 
-    Serial.print(str);
-    Serial.print(" ");
-    Serial.println(back);
+    Serial.println(str);
+    //Serial.println("");
   }
 }
 
@@ -896,7 +903,7 @@ void stepAccX()
     if (rotationQuantity != 0)
     {
       // accXには回ってる間にかなりの確率で次の値が代入される。printをaccXですると回転した時の値とずれるので、accX_absoluteでする。
-      // printSteps_acc(dir, accX_absolute, 0);
+      printSteps_acc(dir, accX_absolute, 0);
     }
   }
   else
@@ -982,7 +989,7 @@ void calculateDirAndAbsDiff(int roll_roundf, int roll_old, int &dir, int &roll_d
 
   if (roll_diff > roll_diff_th_max)
   {
-    roll_diff = roll_diff_th_max; //
+    roll_diff = roll_diff_th_max;
   }
 }
 
@@ -1056,7 +1063,8 @@ double printEvent(sensors_event_t *event, int receivedValue)
   //String str = "accX:" + String(accX) + "," + "roll:" + String(roll);
 
   if (deviceConnected) { //接続されていたら
-    // 送信する値（仮の値）
+    // 送信する値
+
     /*uint8_t*/String valueToSend = String(str);
 
     // BLE通知を行う
@@ -1066,7 +1074,6 @@ double printEvent(sensors_event_t *event, int receivedValue)
     //Serial.print("send");
     //Serial.println(valueToSend);
   }
-
 
   switch (SensingTarget)
   {
