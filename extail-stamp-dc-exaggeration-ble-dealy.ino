@@ -36,7 +36,7 @@ Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28, &Wire);
 sensors_event_t orientationData, angVelocityData, linearAccelData, magnetometerData, accelerometerData, gravityData;
 
 //遅延系
-const float delaySec = 0.2; // 遅延秒数（検証対象：0, 0.1,0.2,0.3,0.5,0.75,1.0,1.25,1.5
+const float delaySec = 1.0; // 遅延秒数（検証対象：(0)0.1,0.2,0.3,0.5,0.75,1.0,1.25,1.5
 const int sampleRate = 100; // サンプリングレート（Hz）BNO055_SAMPLERATE_DELAY_MSと（実質）揃える．型の便宜上変数は分けてある．
 
 const int bufferSize = delaySec * sampleRate; // バッファサイズ（delaySec秒分）
@@ -153,8 +153,10 @@ int ledTask = 0;
 // task1：センサ値に応じてステッパーを回す
 void task1(void * pvParameters) { //Define the tasks to be executed in thread 1.  定义线程1内要执行的任务
   while (1) { //Keep the thread running.  使线程一直运行
-    switch (SensingTarget)
-    {
+
+   
+      switch (SensingTarget)
+      {
       case 0:
         stepRoll();
         break;
@@ -171,7 +173,7 @@ void task1(void * pvParameters) { //Define the tasks to be executed in thread 1.
         //適度に待つ
         delay(100);
 
-    }
+      }
 
 
     vTaskDelay(5); // ステッパーがセンサ値に応じて回転する1セット分を待つインターバル
@@ -560,15 +562,15 @@ void loop() {
   loopBLE();
 
 
-  if (SensingTarget == 0) {
-    
-    bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
-    sensVal = printEvent(&orientationData, receivedValue);
+ if (SensingTarget == 0) {
 
-  } else {
+     bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
+     sensVal = printEvent(&orientationData, receivedValue);
 
-    bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
-    sensVal =  printEvent(&linearAccelData, receivedValue);
+    } else {
+
+  bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
+  sensVal =  printEvent(&linearAccelData, receivedValue);
   }
 
 
@@ -681,8 +683,8 @@ void printSteps(int dir, int roundf_, int old, int diff)
     Serial.print(", total: ");
     Serial.print(rotationQuantity_total);
 
-    Serial.print(", back: ");
-    Serial.println(back);
+    /* Serial.print(", back: ");
+      Serial.println(back);*/
     Serial.println();
   }
 }
@@ -706,7 +708,6 @@ void printSteps_acc(int dir, double accX_absolute, int component)
     str += String(accX_absolute) + " target: " + String(rotationQuantity) + " rQuantity_total:" + String(rotationQuantity_total) /*+ " rSpeed:" + String(rotationSpeed)*/;
 
     Serial.println(str);
-    //Serial.println("");
   }
 }
 
@@ -1075,26 +1076,27 @@ double printEvent(sensors_event_t *event, int receivedValue)
     //Serial.println(valueToSend);
   }
 
-  switch (SensingTarget)
-  {
-    case 0:
-      //Serial.print("y");
-      return y;
-      break;
+ 
+    switch (SensingTarget)
+    {
+      case 0:
+        //Serial.print("y");
+        return y;
+        break;
 
-    case 1:
-      //Serial.print("x");
-      return x;
-      break;
+      case 1:
+        //Serial.print("x");
+        return x;
+        break;
 
-    case 2:
-      //Serial.print("z");
-      return z;
-      break;
+      case 2:
+        //Serial.print("z");
+        return z;
+        break;
 
-    default:
-      //適度に待つ
-      delay(100);
-  }
+      default:
+        //適度に待つ
+        delay(100);
+    }
 
 }
